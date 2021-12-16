@@ -237,10 +237,12 @@ use mangata_primitives::{Balance, TokenId};
 use orml_tokens::{MultiTokenCurrency, MultiTokenCurrencyExtended};
 use pallet_assets_info as assets_info;
 use sp_arithmetic::helpers_128bit::multiply_by_rational;
-use sp_runtime::traits::Zero;
+use sp_runtime::{traits::Zero, FixedI128};
 use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Member};
 use sp_std::convert::TryFrom;
 use sp_std::fmt::Debug;
+use sp_runtime::SaturatedConversion;
+
 
 #[cfg(test)]
 mod mock;
@@ -276,7 +278,6 @@ const TREASURY_PERCENTAGE: u128 = 5;
 const BUYANDBURN_PERCENTAGE: u128 = 5;
 const FEE_PERCENTAGE: u128 = 30;
 const POOL_FEE_PERCENTAGE: u128 = FEE_PERCENTAGE - TREASURY_PERCENTAGE - BUYANDBURN_PERCENTAGE;
-const MINTING_REWARDS_Q: u128 = 110;
 
 // Keywords for asset_info
 const LIQUIDITY_TOKEN_IDENTIFIER: &[u8] = b"LiquidityPoolToken";
@@ -347,8 +348,11 @@ decl_storage! {
 
         LiquidityAssets get(fn liquidity_asset): map hasher(opaque_blake2_256) (TokenId, TokenId) => Option<TokenId>;
         LiquidityPools get(fn liquidity_pool): map hasher(opaque_blake2_256) TokenId => Option<(TokenId, TokenId)>;
-        UsersMinting get(fn users_minting): map hasher(opaque_blake2_256) AccountIdOf<T> => Option<(u128, u128, u128)>;
-        PoolsMinting get(fn pools_minting): map hasher(opaque_blake2_256) TokenId => Option<(u128, u128, u128)>;
+        //TODO already withdrawn to separate storage
+        UsersMinting get(fn users_minting): map hasher(opaque_blake2_256) (AccountIdOf<T>, TokenId) => Option<(u32, u128, u128, u128)>;                                                                            
+        PoolsMinting get(fn pools_minting): map hasher(opaque_blake2_256) TokenId => Option<(u32, u128, u128)>;
+       
+        TokensLockedForMinting get(fn tokens_locked_minting): map hasher(opaque_blake2_256) AccountIdOf<T> => Option<(u128, u128, u128)>;
     }
     add_extra_genesis {
         config(created_pools_for_staking): Vec<(T::AccountId, TokenId, Balance, TokenId, Balance, TokenId)>;
@@ -451,109 +455,332 @@ decl_module! {
     }
 }
 
+//needs to go before reall liq token add
 impl<T: Trait> Module<T> {
-    pub fn set_minting_values_minting_liquidity(
+    pub fn set_reward_values_minting_liquidity(
         user_minting: AccountIdOf<T>,
         liquidity_asset_id: TokenId,
-        liquidity_asset_amount: u128,        
+        liquidity_assets_added: Balance,        
     ) -> DispatchResult {
-        let current_block_number: u128 = <frame_system::Module<T>>::block_number().into() / 1000;
+        log!(
+            info,
+            "checkpoint************************************"
+           
+        );
+        let current_block_number: u32 = <frame_system::Module<T>>::block_number().saturated_into::<u32>();
+        
 
-       
-        if UsersMinting::contains_key(user_minting){
-          
-            let (user_last_checkpoint,user_total_work_previous,user_already_withdrawn )= UsersMinting::get(user_minting)?;
-            let (pool_last_checkpoint,pool_total_work_previous,pool_already_withdrawn )= PoolsMinting::get(liquidity_asset_id)?;
-            let blocks_passed = current_block_number - user_last_checkpoint.into();
+        if UsersMinting::<T>::contains_key((&user_minting, &liquidity_asset_id)){
             
-            let user_liquidity_assets_amount: u128 = <T as Trait>::Currency::total_balance(liquidity_asset_id.into(), &user_minting).into();
-            let user_work_missing_previous = user_liquidity_assets_amount - user_total_work_previous;
-            let user_work_missing_actual = user_work_missing_previous*(100_u128.pow(blocks_passed)) / (MINTING_REWARDS_Q.pow(blocks_passed));
-            let user_total_work_actual = user_liquidity_assets_amount - user_work_missing_actual;
+            let (user_last_checkpoint,user_cummulative_work_in_last_checkpoint,user_missing_at_last_checkpoint, user_already_withdrawn )= UsersMinting::<T>::get((&user_minting, &liquidity_asset_id)).unwrap();
+            let blocks_passed = current_block_number - user_last_checkpoint;
+            let q_pow: f64 = 1.1_f64.powf(blocks_passed.into());
+            let precision: u128 = 10000;
+            let mut user_missing_now: u128 = liquidity_assets_added as u128 + user_missing_at_last_checkpoint * precision / (q_pow * precision as f64) as u128;
 
-            //Updating checkpoint
-            UsersMinting::insert(
-                user_minting,
-                (current_block_number, user_total_work_actual,user_already_withdrawn ),
+            log!(
+                info,
+                "user_missing_now: {:?}", user_missing_now
             );
 
-            let pool_liquidity_assets_amount: u128 = <T as Trait>::Currency::total_issuance(liquidity_asset_id.into()).into();
-            let pool_work_missing_previous = pool_liquidity_assets_amount - pool_total_work_previous;
-            let pool_work_missing_actual = pool_work_missing_previous*(100_u128.pow(blocks_passed)) / (MINTING_REWARDS_Q.pow(blocks_passed));
-            let pool_total_work_actual = pool_liquidity_assets_amount - pool_work_missing_actual;
-
+            let user_work_total = Self::get_work_user(user_minting.clone(), liquidity_asset_id.clone(), current_block_number)?;
             //Updating checkpoint
-            PoolsMinting::insert(
-                liquidity_asset_id,
-                (current_block_number, pool_total_work_actual,pool_already_withdrawn ),
+            log!(
+                info,
+                "user_work_total: {:?}", user_work_total
+            );
+           
+            UsersMinting::<T>::insert(
+                (&user_minting, &liquidity_asset_id),
+                (current_block_number, user_work_total, user_missing_now, user_already_withdrawn )
             );
 
-           // fn total_balance(currency_id: Self::CurrencyId, who: &AccountId) -> Self::Balance;
+         
         }
         else{
-            UsersMinting::insert(
-            user_minting,
-            (current_block_number, 0, 0),
+
+            log!(
+                info,
+                "{:?},{:?},{:?},{:?}",&user_minting, &liquidity_asset_id, &current_block_number, &liquidity_assets_added  
+               
             );
-            PoolsMinting::insert(
-                liquidity_asset_id,
-                (current_block_number, 0, 0),
+
+            UsersMinting::<T>::insert(
+                (&user_minting, &liquidity_asset_id),
+                (current_block_number, 0 as u128, liquidity_assets_added, 0 as u128 )
             );
+
         }
 
-        Ok(())
-    }
+        if PoolsMinting::contains_key(&liquidity_asset_id){
+  
+            let (pool_last_checkpoint,pool_cummulative_work_in_last_checkpoint,pool_missing_at_last_checkpoint )= PoolsMinting::get( &liquidity_asset_id).unwrap();
+            let blocks_passed = current_block_number - pool_last_checkpoint;
+            let q_pow: f64 = 1.1_f64.powf(blocks_passed.into());
+            let precision: u128 = 10000;
+            let mut pool_missing_now: u128 = liquidity_assets_added as u128 + pool_missing_at_last_checkpoint * precision / (q_pow * precision as f64) as u128;
 
-    pub fn set_minting_values_burning_liquidity(
-        user_burning: AccountIdOf<T>,
-        liquidity_asset_id: TokenId,
-        liquidity_asset_amount: u128,        
-    ) -> DispatchResult {
-        let current_block_number: u128 = <frame_system::Module<T>>::block_number().into() / 1000;
-
-            //TODO ensure user has amount to burn        
-          
-            let (user_last_checkpoint,user_total_work_previous,user_already_withdrawn )= UsersMinting::get(user_burning)?;
-            let (pool_last_checkpoint,pool_total_work_previous,pool_already_withdrawn )= PoolsMinting::get(liquidity_asset_id)?;
-            
-            let user_liquidity_assets_amount: u128 = <T as Trait>::Currency::total_balance(liquidity_asset_id.into(), &user_burning).into();
-
-            let user_total_work_actual: u128 = user_total_work_previous * liquidity_asset_amount / user_liquidity_assets_amount;
-            let user_work_burned = user_total_work_previous - user_total_work_actual;
-
-            let burn_withdrawn = user_work_burned - user_already_withdrawn; //TODO min 0
-            let user_already_withdrawn_new = user_already_withdrawn - burn_withdrawn //TODO new val, proper
-            //TODO recalculate to mangata and transfer
-
-            UsersMinting::insert(
-                user_burning,
-                (current_block_number, user_total_work_actual, user_already_withdrawn_new ),
+            log!(
+                info,
+                "pool_missing_now: {:?}", pool_missing_now
             );
 
-            let pool_liquidity_assets_amount: u128 = <T as Trait>::Currency::total_issuance(liquidity_asset_id.into()).into();
-            let pool_work_missing_previous = pool_liquidity_assets_amount - pool_total_work_previous;
-            let pool_work_missing_actual = pool_work_missing_previous*(100_u128.pow(blocks_passed)) / (MINTING_REWARDS_Q.pow(blocks_passed));
-            let pool_total_work_actual = pool_liquidity_assets_amount - pool_work_missing_actual;
+            let pool_work_total = Self::get_work_user(user_minting.clone(), liquidity_asset_id.clone(), current_block_number)?;
+            //Updating checkpoint
+            log!(
+                info,
+                "pool_work_total: {:?}", pool_work_total
+            );
+
             PoolsMinting::insert(
                 liquidity_asset_id,
-                (current_block_number, pool_total_work_actual,pool_already_withdrawn ),
+                (current_block_number, pool_work_total, pool_missing_now)
             );
+        }
+        else {
 
-           // fn total_balance(currency_id: Self::CurrencyId, who: &AccountId) -> Self::Balance;
-        
+            PoolsMinting::insert(
+                liquidity_asset_id,
+                (current_block_number, 0 as u128, liquidity_assets_added)
+
+        );
+}
        
-            UsersMinting::insert(
-            user_minting,
-            (current_block_number, 0, 0),
-            );
-            PoolsMinting::insert(
-                liquidity_asset_id,
-                (current_block_number, 0, 0),
-            );
-        
-
         Ok(())
     }
+
+    // pub fn get_lp_minting_user(
+    //     user:AccountIdOf<T>,
+    //     liquidity_asset_id: TokenId,
+    //     liquidity_assets_added: Balance      
+    // ) -> Result<(u128, u128, u128), DispatchError> {
+        
+    //     let current_block_number: u32 = <frame_system::Module<T>>::block_number().saturated_into::<u32>();
+    //     let (user_last_checkpoint,user_cummulative_work_in_last_checkpoint,user_missing_at_last_checkpoint, user_already_withdrawn )= UsersMinting::<T>::get((&user, &liquidity_asset_id)).unwrap();
+    //     let blocks_passed = current_block_number - user_last_checkpoint;
+
+    //     let user_liquidity_assets_amount: u128 = <T as Trait>::Currency::total_balance(liquidity_asset_id.into(), &user).into();
+    //     let user_cummulative_work_new_max_possible: u128 = user_liquidity_assets_amount * blocks_passed as u128;
+
+    //     // 500*(1-(1/1.1)^10)/(1-1/1.1)
+    //     let base = user_missing_at_last_checkpoint * 11_u128;
+    //     let q_pow: f64 = 1.1_f64.powf(blocks_passed.into());
+    //     // log!(
+    //     //     info,
+    //     //     "Q_pow: {:?}", q_pow
+    //     // );
+    //     let precision: u128 = 10000;
+    //     let user_cummulative_missing_new = base - base * precision / (q_pow * precision as f64) as u128;
+    //     // log!(
+    //     //     info,
+    //     //     "user_cummulative_missing_new: {:?}", user_cummulative_missing_new
+    //     // );
+
+    //     let user_cummulative_work_new = user_cummulative_work_new_max_possible - user_cummulative_missing_new;
+
+    //     let user_work_total = user_cummulative_work_in_last_checkpoint + user_cummulative_work_new;
+        
+    //     let mut user_missing_now = liquidity_assets_added.into() + user_liquidity_assets_amount * precision / (q_pow * precision as f64) as u128;
+    //     if (blocks_passed == 0) {user_missing_now = user_missing_at_last_checkpoint}    
+    //     // log!(
+    //     //     info,
+    //     //     "*************");
+    //     // log!(
+    //     //     info,
+    //     //     "STUFF: {:?},{:?},{:?},{:?}", user_last_checkpoint, user_cummulative_work_in_last_checkpoint, user_missing_at_last_checkpoint, user_already_withdrawn
+    //     // );
+    //     // log!(
+    //     //     info,
+    //     //     "BP: {:?}", blocks_passed
+    //     // );
+    //     // log!(
+    //     //     info,
+    //     //     "user_liquidity_assets_amount: {:?}", user_liquidity_assets_amount
+    //     // );
+    //     // log!(
+    //     //     info,
+    //     //     "user_cummulative_work_new_max_possible: {:?}", user_cummulative_work_new_max_possible
+    //     // );
+    //     // log!(
+    //     //     info,
+    //     //     "base: {:?}", base
+    //     // );
+    //     // log!(
+    //     //     info,
+    //     //     "Q_pow: {:?}", Q_pow
+    //     // );
+    //     //  // 3379
+    //     //  log!(
+    //     //     info,
+    //     //     "user_cummulative_missing_new: {:?}", user_cummulative_missing_new
+    //     // );
+
+    //     // log!(
+    //     //     info,
+    //     //     "user_work_total: {:?}", user_work_total
+    //     // );
+
+    //     // log!(
+    //     //     info,
+    //     //     "user_missing_now: {:?}", user_missing_now
+    //     // );
+    //     Ok((user_work_total,user_missing_now, user_already_withdrawn))
+    // }
+
+    pub fn get_work_user(
+        user:AccountIdOf<T>,
+        liquidity_asset_id: TokenId,
+        time: u32,    
+    ) -> Result<u128, DispatchError> {
+        let (last_checkpoint,cummulative_work_in_last_checkpoint,missing_at_last_checkpoint, already_withdrawn )= UsersMinting::<T>::get((&user, &liquidity_asset_id)).unwrap();
+        log!(
+            info,
+            "time: {:?}", time
+        );
+         log!(
+            info,
+            "last_checkpoint: {:?}", last_checkpoint
+        );
+        let blocks_passed = time - last_checkpoint;
+   
+        let liquidity_assets_amount: u128 = <T as Trait>::Currency::total_balance(liquidity_asset_id.into(), &user).into();
+        let cummulative_work_new_max_possible: u128 = liquidity_assets_amount * blocks_passed as u128;
+        let base = missing_at_last_checkpoint * 11_u128;
+        let q_pow: f64 = 1.1_f64.powf(blocks_passed.into());
+
+        let precision: u128 = 10000;
+        let cummulative_missing_new = base - base * precision / (q_pow * precision as f64) as u128;
+        let cummulative_work_new = cummulative_work_new_max_possible - cummulative_missing_new;
+        let work_total = cummulative_work_in_last_checkpoint + cummulative_work_new;
+
+        Ok(work_total)
+    }
+
+    pub fn get_work_pool(
+       
+        liquidity_asset_id: TokenId,
+        time: u32,    
+    ) -> Result<u128, DispatchError> {
+        let (last_checkpoint,cummulative_work_in_last_checkpoint,missing_at_last_checkpoint)= PoolsMinting::get(&liquidity_asset_id).unwrap();
+        //TODO time>last is a must
+             log!(
+            info,
+            "time: {:?}", time
+        );
+         log!(
+            info,
+            "last_checkpoint: {:?}", last_checkpoint
+        );
+        let blocks_passed = time - last_checkpoint;
+   
+        let liquidity_assets_amount: u128 = <T as Trait>::Currency::total_issuance(liquidity_asset_id.into()).into();
+        let cummulative_work_new_max_possible: u128 = liquidity_assets_amount * blocks_passed as u128;
+        let base = missing_at_last_checkpoint * 11_u128;
+        let q_pow: f64 = 1.1_f64.powf(blocks_passed.into());
+
+        let precision: u128 = 10000;
+        let cummulative_missing_new = base - base * precision / (q_pow * precision as f64) as u128;
+        let cummulative_work_new = cummulative_work_new_max_possible - cummulative_missing_new;
+        let work_total = cummulative_work_in_last_checkpoint + cummulative_work_new;
+
+        Ok(work_total)
+    }
+    // pub fn get_lp_minting_pool(
+        
+    //     liquidity_asset_id: TokenId,
+    //     liquidity_assets_added: Balance        
+    // ) -> Result<(u128, u128), DispatchError> {
+    //     let current_block_number: u32 = <frame_system::Module<T>>::block_number().saturated_into::<u32>();
+    //     // UsersMinting get(fn users_minting): map hasher(opaque_blake2_256) (AccountIdOf<T>, TokenId) => Option<(u32, u128, u128, u128)>;                                                                            
+    //     // PoolsMinting get(fn pools_minting): map hasher(opaque_blake2_256) TokenId => Option<(u32, u128, u128, u128)>; 
+    //     let (pool_last_checkpoint,pool_cummulative_work_in_last_checkpoint,pool_missing_at_last_checkpoint )= PoolsMinting::get(liquidity_asset_id).unwrap();
+    //     //let (user_last_checkpoint,user_cummulative_work_in_last_checkpoint,user_missing_at_last_checkpoint, user_already_withdrawn )= UsersMinting::<T>::get((&user, &liquidity_asset_id)).unwrap();
+    //     let blocks_passed = current_block_number - pool_last_checkpoint;
+    //     let pool_liquidity_assets_amount: u128 = <T as Trait>::Currency::total_issuance(liquidity_asset_id.into()).into();
+    //     let pool_cummulative_work_new_max_possible: u128 = pool_liquidity_assets_amount * blocks_passed as u128;
+
+    //     // 500*(1-(1/1.1)^10)/(1-1/1.1)
+    //     let base = pool_missing_at_last_checkpoint * 11_u128;
+    //     let q_pow: f64 = 1.1_f64.powf(blocks_passed.into());
+    //     let precision: u128 = 10000;
+    //     let pool_cummulative_missing_new = base - base * precision / (q_pow * precision as f64) as u128;
+    //     let pool_cummulative_work_new = pool_cummulative_work_new_max_possible - pool_cummulative_missing_new;
+
+    //     let pool_work_total = pool_cummulative_work_in_last_checkpoint + pool_cummulative_work_new;
+
+    //     let mut pool_missing_now = liquidity_assets_added.into() + pool_missing_at_last_checkpoint * precision / (q_pow * precision as f64) as u128;
+    //     if (blocks_passed == 0) {pool_missing_now = pool_missing_at_last_checkpoint}    
+    //     log!(
+    //         info,
+    //         "//////////////POOL AT : {:?},{:?},{:?}", current_block_number, blocks_passed, pool_missing_at_last_checkpoint);
+  
+    //     log!(
+    //         info,
+    //         "STUFF: {:?},{:?},{:?}", pool_last_checkpoint, pool_cummulative_work_in_last_checkpoint, pool_missing_at_last_checkpoint);
+    //     log!(
+    //         info,
+    //         "BP: {:?}", blocks_passed
+    //     );
+    //     log!(
+    //         info,
+    //         "pool_liquidity_assets_amount: {:?}", pool_liquidity_assets_amount
+    //     );
+    //     log!(
+    //         info,
+    //         "pool_cummulative_work_new_max_possible: {:?}", pool_cummulative_work_new_max_possible
+    //     );
+    //     log!(
+    //         info,
+    //         "base: {:?}", base
+    //     );
+    //     log!(
+    //         info,
+    //         "Q_pow: {:?}", q_pow
+    //     );
+    //      // 3379
+    //      log!(
+    //         info,
+    //         "pool_cummulative_missing_new: {:?}", pool_cummulative_missing_new
+    //     );
+
+    //     log!(
+    //         info,
+    //         "pool_work_total: {:?}", pool_work_total
+    //     );
+
+    //     log!(
+    //         info,
+    //         "pool_missing_now: {:?}", pool_missing_now
+    //     );
+    //     log!(
+    //         info,
+    //         "//////////////POOL AT : {:?},{:?},{:?}", current_block_number, blocks_passed, pool_missing_at_last_checkpoint);
+  
+    //     Ok((pool_work_total,pool_missing_now))
+    // }
+    
+    
+
+    // pub fn get_lp_minting_pool(
+    //     user:AccountIdOf<T>,
+    //     liquidity_asset_id: TokenId      
+    // ) -> Result<Balance, DispatchError> {
+
+
+    //     Ok(result)
+    // }
+
+
+    // pub fn set_minting_values_burning_liquidity(
+    //     user_burning: AccountIdOf<T>,
+    //     liquidity_asset_id: TokenId,
+    //     liquidity_asset_amount: u128,        
+    // ) -> DispatchResult {
+    //     let current_block_number: u128 = <frame_system::Module<T>>::block_number().into() / 1000;
+
+
+    //     Ok(())
+    // }
 
     // Sets the liquidity token's info
     // May fail if liquidity_asset_id does not exsist
@@ -1143,6 +1370,8 @@ impl<T: Trait> XykFunctionsTrait<T::AccountId> for Module<T> {
         LiquidityAssets::insert((first_asset_id, second_asset_id), liquidity_asset_id);
         LiquidityPools::insert(liquidity_asset_id, (first_asset_id, second_asset_id));
 
+        Module::<T>::set_reward_values_minting_liquidity(sender.clone() , liquidity_asset_id,initial_liquidity )?;
+
         log!(
             info,
             "create_pool: ({:?}, {}, {}, {}, {}) -> ({}, {})",
@@ -1622,6 +1851,8 @@ impl<T: Trait> XykFunctionsTrait<T::AccountId> for Module<T> {
             ExistenceRequirement::KeepAlive,
         )?;
 
+        Module::<T>::set_reward_values_minting_liquidity(sender.clone() , liquidity_asset_id,liquidity_assets_minted )?;
+      
         // Creating new liquidity tokens to user
         <T as Trait>::Currency::mint(
             liquidity_asset_id.into(),
@@ -1640,7 +1871,7 @@ impl<T: Trait> XykFunctionsTrait<T::AccountId> for Module<T> {
             second_asset_reserve_updated,
         )?;
 
-        log!(
+         log!(
             info,
             "mint_liquidity: ({:?}, {}, {}, {}) -> ({}, {}, {})",
             sender,
