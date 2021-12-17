@@ -58,7 +58,7 @@ use log::{info};
 // W - should work
 // N - should not work
 
-#[test]
+//#[test]
 fn mint_rewards_W() {
     env_logger::init();
 
@@ -89,7 +89,7 @@ fn mint_rewards_W() {
      let mut u1_s = XykStorage::users_minting((2, 3)).unwrap();
      let mut p_s = XykStorage::pools_minting( 3).unwrap();
      let mut u1_g = XykStorage::get_work_user(2,3, 1).unwrap();
-
+     let mut pg_g = XykStorage::get_work_pool(3, 1).unwrap();
         info!("storage_user_last_checkpoint: {:?}", u1_s.0);
         info!("storage_user_cummulative_work_in_last_checkpoint: {:?}", u1_s.1);
         info!("storage_user_user_missing_at_last_checkpoint: {:?}", u1_s.2);
@@ -114,64 +114,111 @@ info!("*******MINT************");
     .unwrap();
 
     u1_g = XykStorage::get_work_user(2,3, 11).unwrap();
+    pg_g = XykStorage::get_work_pool(3, 11).unwrap();
     info!("user_work_total: {:?}", u1_g);
+    info!("pool_work_total: {:?}", pg_g);
 
     System::set_block_number(21);
 
     u1_g = XykStorage::get_work_user(2,3, 21).unwrap();
+    pg_g = XykStorage::get_work_pool(3, 21).unwrap();
     info!("user_work_total: {:?}", u1_g);
+    info!("pool_work_total: {:?}", pg_g);
 
-    // XykStorage::mint_liquidity(
-    //     Origin::signed(2),
-    //     0,
-    //     1,
-    //     500,
-    //     501,
-    // )
-    // .unwrap();
+    XykStorage::mint_liquidity(
+        Origin::signed(2),
+        0,
+        1,
+        500,
+        501,
+    )
+    .unwrap();
 
     u1_g = XykStorage::get_work_user(2,3, 21).unwrap();
+    pg_g = XykStorage::get_work_pool(3, 21).unwrap();
     info!("user_work_total: {:?}", u1_g);
+    info!("pool_work_total: {:?}", pg_g);
 
      System::set_block_number(31);
 
      u1_g = XykStorage::get_work_user(2,3, 31).unwrap();
+     pg_g = XykStorage::get_work_pool(3, 31).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    info!("pool_work_total: {:?}", pg_g);
+
+});
+}
+
+#[test]
+fn mint_rewards_W2() {
+    env_logger::init();
+
+    new_test_ext().execute_with(|| {
+        System::set_block_number(1);
+    let acc_id: u128 = 2;
+    let amount: u128 = 2000000;
+    XykStorage::create_new_token(&acc_id, amount);
+    XykStorage::create_new_token(&acc_id, amount);
+    XykStorage::create_new_token(&acc_id, amount);
+    XykStorage::transfer(0,2,3,1000000).unwrap();
+    XykStorage::transfer(1,2,3,1000000).unwrap();
+
+    let k = XykStorage::balance(0,3);
+    info!("TOKEN0: {:?}", k);
+    let l = XykStorage::balance(1,3);
+    info!("TOKEN1: {:?}", l);
+    XykStorage::create_pool(
+        Origin::signed(2),
+        0,
+        500,
+        1,
+        500,
+    )
+    .unwrap();
+
+
+    let mut u1_g = XykStorage::get_work_user(2,3, 1).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 2).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 3).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 4).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 5).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 6).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 7).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 8).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 9).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 10).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 11).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 12).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 13).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 14).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 15).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 16).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 17).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 18).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 19).unwrap();
+    info!("user_work_total: {:?}", u1_g);
+    u1_g = XykStorage::get_work_user(2,3, 20).unwrap();
     info!("user_work_total: {:?}", u1_g);
 
-//     let u1_s_21_2 = XykStorage::users_minting((2, 3)).unwrap();
-//     let p_s_21_2 = XykStorage::pools_minting( 3).unwrap();
-//     let u1_g_21_2 = XykStorage::get_lp_minting_user(2,3).unwrap();
-//     let p_g_21_2 = XykStorage::get_lp_minting_pool(3).unwrap();
-    
-//     // let u2_s_21_2 = XykStorage::users_minting((3, 3)).unwrap();
-//     // let u2_g_21_2 = XykStorage::get_lp_minting_user(3,3).unwrap();
 
-//     info!("*******10 more blocks passed************ block 21");
-
-//     info!("user_work_total: {:?}", u1_g_21_2.0);
-//     info!("user_missing_now: {:?}", u1_g_21_2.1);
-//     info!("user_already_withdrawn: {:?}", u1_g_21_2.2);
-
-//     info!("pool_work_total: {:?}", p_g_21_2.0);
-//     info!("pool_missing_now: {:?}", p_g_21_2.1);
-   
-//     info!("storage_user_last_checkpoint: {:?}", u1_s_21_2.0);
-//     info!("storage_user_cummulative_work_in_last_checkpoint: {:?}", u1_s_21_2.1);
-//     info!("storage_user_user_missing_at_last_checkpoint: {:?}", u1_s_21_2.2);
-//     info!("storage_user_already_withdrawn: {:?}", u1_s_21_2.3);
-
-//     info!("storage_pool_last_checkpoint: {:?}", p_s_21_2.0);
-//     info!("storage_pool_cummulative_work_in_last_checkpoint: {:?}", p_s_21_2.1);
-//     info!("storage_pool_user_missing_at_last_checkpoint: {:?}", p_s_21_2.2);
-
-//     // info!("user_2_work_total: {:?}", u2_g_21_2.0);
-//     // info!("user_2_missing_now: {:?}", u2_g_21_2.1);
-//     // info!("user_2_already_withdrawn: {:?}", u2_g_21_2.2);
-
-//     // info!("storage_user_2_last_checkpoint: {:?}", u2_s_21_2.0);
-//     // info!("storage_user_2_cummulative_work_in_last_checkpoint: {:?}", u2_s_21_2.1);
-//     // info!("storage_user_2_user_missing_at_last_checkpoint: {:?}", u2_s_21_2.2);
-//     // info!("storage_user_2_already_withdrawn: {:?}", u2_s_21_2.3);
 });
 }
 
