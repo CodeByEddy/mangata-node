@@ -151,7 +151,7 @@ jobs:
         uses: actions/checkout@v2
       -
         name: Modify Node
-        run: perl -pi -e 's/pub const TermDuration: BlockNumber = 120 * DAYS/pub const TermDuration: BlockNumber = 5 * minutes/g' runtime/src/lib.rs
+        run: sed -i 's/BlockNumber = 120 * DAYS/BlockNumber = 5 * MINUTES/g' runtime/src/lib.rs
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v1
