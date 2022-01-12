@@ -10,36 +10,43 @@ services:
   relay_alice:
     environment:
       - RUST_LOG=debug,sync=info,afg=info,libp2p_swarm=info,multistream_select=info,libp2p_core=info,sub-libp2p=info,libp2p_tcp=info,wasm_overrides=info,wasm-heap=info,libp2p_ping=info,runtime=debug
-    image: matmangata/polkadot-wit-curl:latest
-    entrypoint: ""
-    command: > 
-      bash -c "
-      curl https://raw.githubusercontent.com/mangata-finance/mangata-node/86d5eda12bc51bd5da71596dd1d707f367e18480/scripts/runner.sh -o /tmp/runner.sh && 
-      chmod +x /tmp/runner.sh && 
-      /tmp/runner.sh
-      polkadot --alice --validator --tmp --chain /config/spec.json --port 30333  --unsafe-ws-external --rpc-port=40333 --unsafe-rpc-external --rpc-cors=all --ws-port 9944
-      "
+    image: parity/polkadot:v0.9.12
+    command:
+      - "--alice"
+      - "--validator"
+      - "--tmp"
+      - "--port=30333"
+      - "--ws-port=9944"
+      - "--chain=/etc/mangata/spec.json"
+      - "--unsafe-ws-external"
+      - "--rpc-port=40333"
+      - "--unsafe-rpc-external"
+      - "--rpc-cors=all"
+      - "--node-key=0000000000000000000000000000000000000000000000000000000000000001"
     volumes:
-      - ./config:/config
+      - ./config:/etc/mangata
     networks:
         test_net:
           ipv4_address: 10.0.0.2
 
   relay_bob:
-    image: matmangata/polkadot-wit-curl:latest
-        #environment:
-        #- RUST_LOG=debug,sync=info,afg=info,libp2p_swarm=info,multistream_select=info,libp2p_core=info,sub-libp2p=info,libp2p_tcp=info,wasm_overrides=info,wasm-heap=info,libp2p_ping=info,runtime=debug
-    entrypoint: ""
-    tty: true
-    command: > 
-      bash -c "
-      curl https://raw.githubusercontent.com/mangata-finance/mangata-node/86d5eda12bc51bd5da71596dd1d707f367e18480/scripts/runner.sh -o /tmp/runner.sh && 
-      chmod +x /tmp/runner.sh && 
-      /tmp/runner.sh
-      polkadot --bob --validator --tmp --chain /config/spec.json --port 30333  --ws-port 9944 --bootnodes /ip4/10.0.0.2/tcp/40333/p2p/AUTO --unsafe-ws-external --unsafe-rpc-external --rpc-cors=all;
-      "
+    image: parity/polkadot:v0.9.12
+    environment:
+      - RUST_LOG=debug,sync=info,afg=info,libp2p_swarm=info,multistream_select=info,libp2p_core=info,sub-libp2p=info,libp2p_tcp=info,wasm_overrides=info,wasm-heap=info,libp2p_ping=info,runtime=debug
+    command:
+      - "--bob" 
+      - "--validator" 
+      - "--tmp" 
+      - "--port=30333" 
+      - "--ws-port=9944" 
+      - "--chain=/etc/mangata/spec.json" 
+      - "--bootnodes=/dns/relay_alice/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp" 
+      - "--unsafe-ws-external" 
+      - "--unsafe-rpc-external" 
+      - "--rpc-cors=all"
+      - "--node-key=0000000000000000000000000000000000000000000000000000000000000002"
     volumes:
-      - ./config:/config
+      - ./config:/etc/mangata
     networks:
         test_net:
           ipv4_address: 10.0.0.3
@@ -62,44 +69,56 @@ services:
           ipv4_address: 10.0.0.4
 
   para_alice:
-    image: matmangata/mangata-node:latest
-    environment:
-      - RUST_LOG=debug,sync=info,afg=info,libp2p_swarm=info,multistream_select=info,libp2p_core=info,sub-libp2p=info,libp2p_tcp=info,wasm_overrides=info,wasm-heap=info,libp2p_ping=info,runtime=debug
+    image: "mangatasolutions/mangata-node:v4-dev"
+    # environment:
+    #   - RUST_LOG=debug,sync=info,afg=info,libp2p_swarm=info,multistream_select=info,libp2p_core=info,sub-libp2p=info,libp2p_tcp=info,wasm_overrides=info,wasm-heap=info,libp2p_ping=info,runtime=debug
     entrypoint: ""
-    command: >
-      bash -c "
-      /mangata/node export-genesis-state > /config/genesis-state;
-      /mangata/node export-genesis-wasm > /config/genesis-wasm;
-      curl https://raw.githubusercontent.com/mangata-finance/mangata-node/86d5eda12bc51bd5da71596dd1d707f367e18480/scripts/runner.sh -o /tmp/runner.sh && 
-      chmod +x /tmp/runner.sh && 
-      /tmp/runner.sh
-      /mangata/node --alice --collator --force-authoring --tmp --port 30333
-      --ws-port 9944 --unsafe-ws-external --unsafe-rpc-external
-      --rpc-cors=all -- --execution wasm --chain /config/spec.json
-      --port 30334 --ws-port 9945
-      "
+    command:
+      - "/mangata/node"
+      - "--alice"
+      - "--collator"
+      - "--force-authoring"
+      - "--tmp"
+      - "--port=30333"
+      - "--ws-port=9944"
+      - "--unsafe-ws-external"
+      - "--unsafe-rpc-external"
+      - "--rpc-cors=all"
+      - "--node-key=0000000000000000000000000000000000000000000000000000000000000003"
+      - "--"
+      # relay
+      - "--execution=wasm"
+      - "--chain=/etc/mangata/spec.json"
+      - "--bootnodes=/dns/relay_alice/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp" 
     volumes:
-      - ./config:/config
+      - ./config:/etc/mangata
     networks:
         test_net:
           ipv4_address: 10.0.0.5
 
   para_bob:
-    image: matmangata/mangata-node:latest
+    image: "mangatasolutions/mangata-node:v4-dev"
     entrypoint: ""
-    command: >
-      bash -c "
-      curl https://raw.githubusercontent.com/mangata-finance/mangata-node/86d5eda12bc51bd5da71596dd1d707f367e18480/scripts/runner.sh -o /tmp/runner.sh && 
-      chmod +x /tmp/runner.sh && 
-      /tmp/runner.sh
-      /mangata/node --bob --rpc-cors=all 
-      --collator --unsafe-ws-external --unsafe-rpc-external  
-      --force-authoring --tmp --port 30333 --ws-port 9944 -- 
-      --execution wasm --chain /config/spec.json
-      --port 30334
-      "
+    command:
+      - "/mangata/node"
+      - "--bob"
+      - "--collator"
+      - "--force-authoring"
+      - "--tmp"
+      - "--port=30333"
+      - "--ws-port=9944"
+      - "--unsafe-ws-external"
+      - "--unsafe-rpc-external"
+      - "--rpc-cors=all"
+      - "--node-key=0000000000000000000000000000000000000000000000000000000000000004"
+      - "--bootnodes=/dns/para_alice/tcp/30333/p2p/12D3KooWKpDhPnax8CyJvVh77Z5T84a8EWZvY7c9Z7pZ1tk6sLBD"
+      - "--"
+      # relay
+      - "--execution=wasm"
+      - "--chain=/etc/mangata/spec.json"
+      - "--bootnodes=/dns/relay_alice/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp" 
     volumes:
-      - ./config:/config
+      - ./config:/etc/mangata
     networks:
         test_net:
           ipv4_address: 10.0.0.6
@@ -114,4 +133,22 @@ services:
         test_net:
           ipv4_address: 10.0.0.10
 
+
+  # export:
+  #   image: "mangatasolutions/mangata-node:v4-dev"
+  #   entrypoint: ""
+  #   command: >
+  #     bash -xc "
+  #     /mangata/node export-genesis-state > /etc/mangata/genesis-state;
+  #     /mangata/node export-genesis-wasm > /etc/mangata/genesis-wasm;
+  #     du /etc/mangata/genesis-state;
+  #     md5sum /etc/mangata/genesis-state;
+  #     du /etc/mangata/genesis-wasm;
+  #     md5sum /etc/mangata/genesis-wasm;
+  #     "
+  #   volumes:
+  #     - ./config:/etc/mangata
+  #   networks:
+  #       test_net:
+  #         ipv4_address: 10.0.0.11
 
