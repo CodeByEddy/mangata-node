@@ -8,8 +8,8 @@ networks:
 
 services:
   relay_alice:
-    #environment:
-      #- RUST_LOG=debug,sync=info,afg=info,libp2p_swarm=info,multistream_select=info,libp2p_core=info,sub-libp2p=info,libp2p_tcp=info,wasm_overrides=info,wasm-heap=info,libp2p_ping=info,runtime=debug
+    environment:
+      - RUST_LOG=debug,sync=info,afg=info,libp2p_swarm=info,multistream_select=info,libp2p_core=info,sub-libp2p=info,libp2p_tcp=info,wasm_overrides=info,wasm-heap=info,libp2p_ping=info,runtime=debug
     image: matmangata/polkadot-wit-curl:latest
     entrypoint: ""
     command: > 
@@ -63,6 +63,8 @@ services:
 
   para_alice:
     image: matmangata/mangata-node:latest
+    environment:
+      - RUST_LOG=debug,sync=info,afg=info,libp2p_swarm=info,multistream_select=info,libp2p_core=info,sub-libp2p=info,libp2p_tcp=info,wasm_overrides=info,wasm-heap=info,libp2p_ping=info,runtime=debug
     entrypoint: ""
     command: >
       bash -c "
