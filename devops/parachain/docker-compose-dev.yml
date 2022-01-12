@@ -19,6 +19,7 @@ services:
       - ./config:/config
     ports:
       - 9944:9944
+      - 30333:30333
     networks:
         test_net:
           ipv4_address: 10.0.0.2
@@ -54,6 +55,7 @@ services:
     environment:
       - STATE_FILE=/config/genesis-state
       - WASM_FILE=/config/genesis-wasm
+      - COLLATOR_ADDR=ws://10.0.0.2:9944
     build:
       context: ../../
       dockerfile: devops/dockerfiles/node-and-runtime/para.dockerfile

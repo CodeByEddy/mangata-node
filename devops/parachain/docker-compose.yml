@@ -52,7 +52,11 @@ services:
     build:
       context: ../../
       dockerfile: devops/dockerfiles/node-and-runtime/para.dockerfile
-    command: node index.js
+    command: bash -c "sleep 10s && node index.js"
+    environment:
+      - STATE_FILE=/config/genesis-state
+      - WASM_FILE=/config/genesis-wasm
+      - COLLATOR_ADDR=ws://10.0.0.2:9944
     volumes:
       - ./config:/config
     networks:
@@ -61,11 +65,16 @@ services:
 
   para_alice:
     image: mangatasolutions/mangata-node:latest
+    entrypoint: ""
     command: >
-      --alice --collator --force-authoring --tmp --port 30333
+      bash -c "
+      /mangata/node export-genesis-state > /config/genesis-state;
+      /mangata/node export-genesis-wasm > /config/genesis-wasm;
+      /mangata/node --alice --collator --force-authoring --tmp --port 30333
       --ws-port 9944 --unsafe-ws-external --unsafe-rpc-external
       --rpc-cors=all -- --execution wasm --chain /config/spec.json
       --port 30334 --ws-port 9945
+      "
     volumes:
       - ./config:/config
     networks:

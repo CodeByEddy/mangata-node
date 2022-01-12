@@ -17,3 +17,6 @@
 .idea
 .vscode
 node_modules
+devops/parachain/config/genesis-state
+devops/parachain/config/genesis-wasm
+
