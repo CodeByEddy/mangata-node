@@ -29,7 +29,9 @@ services:
     tty: true
     command: > 
       bash -c "
-      /config/runner.sh
+      curl https://raw.githubusercontent.com/mangata-finance/mangata-node/86d5eda12bc51bd5da71596dd1d707f367e18480/scripts/runner.sh -o /tmp/runner.sh && 
+      chmod +x /tmp/runner.sh && 
+      /tmp/runner.sh
       polkadot --bob --validator --tmp --chain /config/spec.json --port 30333  --ws-port 9944 --bootnodes /ip4/10.0.0.2/tcp/40333/p2p/AUTO --unsafe-ws-external --unsafe-rpc-external --rpc-cors=all;
       "
     volumes:
