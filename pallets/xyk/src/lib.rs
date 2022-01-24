@@ -2175,11 +2175,7 @@ impl<T: Config> XykFunctionsTrait<T::AccountId> for Pallet<T> {
 			i128::try_from(amount).map_err(|_| DispatchError::from(Error::<T>::MathOverflow))?;
 		let rewards_claimed_pool_new = rewards_claimed_pool + amount;
 
-		<T as Config>::Currency::mint(
-			mangata_id.into(),
-			&sender,
-			amount.into(),
-		)?;
+		<T as Config>::Currency::mint(mangata_id.into(), &sender, amount.into())?;
 
 		LiquidityMiningUserClaimed::<T>::insert(
 			(sender, liquidity_token_id),
